@@ -3,6 +3,7 @@ Puppet::Type.type(:cpan).provide( :default ) do
 
   commands :cpan     => 'cpan'
   commands :perl     => 'perl'
+  commands :yes      => 'yes'
   confine  :osfamily => [:Debian, :RedHat, :Windows]
   ENV['PERL_MM_USE_DEFAULT'] = '1'
 
@@ -34,18 +35,14 @@ Puppet::Type.type(:cpan).provide( :default ) do
     Puppet.debug("cpan #{resource[:name]}")
     if resource.force?
       Puppet.info("Forcing install for #{resource[:name]}")
-      system("yes | perl #{ll} -MCPAN -e 'CPAN::force CPAN::install #{resource[:name]}'")
+      execute("#{command(:yes)} | #{command(:perl)} #{ll} -MCPAN -e 'CPAN::force CPAN::install #{resource[:name]}'")
     else
-      system("yes | perl #{ll} -MCPAN -e 'CPAN::install #{resource[:name]}'")
+      execute("#{command(:yes)} | #{command(:perl)} #{ll} -MCPAN -e 'CPAN::install #{resource[:name]}'")
     end
 
-    #cpan doesn't always provide the right exit code, so we double check
-    system("perl #{ll} -M#{resource[:name]} -e1 > /dev/null 2>&1")
-    estatus = $?.exitstatus
-
-    if estatus != 0
-      raise Puppet::Error, "cpan #{resource[:name]} failed with error code #{estatus}"
-    end
+    # cpan doesn't always provide the right exit code, so we double check
+    # execute will throw a Puppet::ExecutionFailure if the command doesn't return 0
+    execute("#{command(:perl)} #{ll} -M#{resource[:name]} -e1")
   end
 
   def destroy
@@ -59,14 +56,9 @@ Puppet::Type.type(:cpan).provide( :default ) do
     end
     if resource.force?
       Puppet.info("Forcing upgrade for #{resource[:name]}")
-      system("yes | perl #{ll} -MCPAN -e 'CPAN::force CPAN::install #{resource[:name]}'")
+      execute("#{command(:yes)} | #{command(:perl)} #{ll} -MCPAN -e 'CPAN::force CPAN::install #{resource[:name]}'")
     else
-      system("yes | perl #{ll} -MCPAN -e 'CPAN::install #{resource[:name]}'")
-    end
-    estatus = $?.exitstatus
-    
-    if estatus != 0
-      raise Puppet::Error, "CPAN::install #{resource[:name]} failed with error code #{estatus}"
+      execute("#{command(:yes)} | #{command(:perl)} #{ll} -MCPAN -e 'CPAN::install #{resource[:name]}'")
     end
   end
 
@@ -74,18 +66,15 @@ Puppet::Type.type(:cpan).provide( :default ) do
     if resource[:local_lib]
       ll = "-Mlocal::lib=#{resource[:local_lib]}"
     end
-    Puppet.debug("perl #{ll} -M#{resource[:name]} -e1 > /dev/null 2>&1")
-    output = `perl #{ll} -M#{resource[:name]} -e1 > /dev/null 2>&1`
-    estatus = $?.exitstatus
-
-    case estatus
+    output = execute("#{command(:perl)} #{ll} -M#{resource[:name]} -e1", :failonfail => false, :combine => true)
+    case output.exitstatus
     when 0
       true
     when 2
       Puppet.debug("#{resource[:name]} not installed")
       false
     else
-      raise Puppet::Error, "perl #{ll} -M#{resource[:name]} -e1 failed with error code #{estatus}: #{output}"
+      raise Puppet::Error, "perl #{ll} -M#{resource[:name]} -e1 failed with error code #{output.exitstatus}: #{output}"
     end
   end
 
